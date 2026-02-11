@@ -88,7 +88,7 @@ namespace TaskManagerAPI.Controllers
 
             if(taskid == null)
             {
-                return BadRequest("that task dont exist.");
+                return NotFound("that task dont exist.");
             }
 
             taskid.Title = dto.Title;
@@ -108,7 +108,7 @@ namespace TaskManagerAPI.Controllers
 
             if (tasktoEliminate == null)
             {
-                return BadRequest("there is no task to delete.");
+                return NotFound("there is no task to delete.");
             }
 
             _context.Tasks.Remove(tasktoEliminate);
