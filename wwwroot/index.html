@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskManager API Tester</title>
+  <style>body{font-family:Arial,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}.container{max-width:980px;margin:0 auto;padding:24px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}.card{background:#111827;border:1px solid #334155;border-radius:12px;padding:16px}label{display:block;font-size:12px;margin:6px 0;color:#93c5fd}input,textarea,select,button{width:100%;box-sizing:border-box;margin-bottom:10px;border-radius:8px;border:1px solid #475569;background:#0b1220;color:#e2e8f0;padding:10px}button{cursor:pointer;background:#1d4ed8;border:none;font-weight:600}.secondary{background:#334155}.row{display:flex;gap:10px}.row>*{flex:1}pre{background:#020617;border:1px solid #334155;border-radius:8px;padding:10px;overflow:auto;max-height:260px}.ok{color:#22c55e}.bad{color:#ef4444}.token{word-break:break-all;font-size:12px}</style>
+</head>
+<body>
+<div class="container">
+<h1>TaskManager API Tester</h1>
+<p>Frontend básico para probar <code>/api/auth</code> y <code>/api/tasks</code> usando JWT.</p>
+<div class="grid">
+<section class="card"><h2>Register</h2><label>Nombre</label><input id="reg-name"/><label>Email</label><input id="reg-email"/><label>Password</label><input id="reg-password" type="password"/><button id="btn-register">Registrar</button></section>
+<section class="card"><h2>Login</h2><label>Email</label><input id="login-email"/><label>Password</label><input id="login-password" type="password"/><button id="btn-login">Login</button><button id="btn-logout" class="secondary">Logout</button></section>
+<section class="card"><h2>Token actual</h2><div id="token-state" class="bad">No autenticado</div><p class="token" id="token-view"></p></section>
+</div>
+<div class="grid" style="margin-top:16px;">
+<section class="card"><h2>Crear tarea</h2><label>Título</label><input id="task-title"/><label>Descripción</label><textarea id="task-desc"></textarea><label>Status</label><select id="task-status"><option value="0">Pending</option><option value="1">InProgress</option><option value="2">Done</option></select><button id="btn-create">Crear tarea</button></section>
+<section class="card"><h2>Acciones tareas</h2><div class="row"><button id="btn-list" class="secondary">Listar mías</button><button id="btn-clear" class="secondary">Limpiar salida</button></div><label>Task ID</label><input id="task-id" type="number"/><div class="row"><button id="btn-get" class="secondary">Get by id</button><button id="btn-delete" class="secondary">Delete</button></div></section>
+</div>
+<section class="card" style="margin-top:16px;"><h2>Salida API</h2><pre id="output">Listo.</pre></section>
+</div>
+<script>
+const api = { register:'/api/auth/register', login:'/api/auth/login', tasks:'/api/tasks' };
+const out = document.getElementById('output');
+const tokenView = document.getElementById('token-view');
+const tokenState = document.getElementById('token-state');
+
+const get = (id) => document.getElementById(id);
+const readToken = () => localStorage.getItem('jwtToken') || '';
+const saveToken = (t) => localStorage.setItem('jwtToken', t);
+const clearToken = () => localStorage.removeItem('jwtToken');
+
+function renderToken(){
+  const t = readToken();
+  tokenView.textContent = t || '';
+  tokenState.textContent = t ? 'Autenticado' : 'No autenticado';
+  tokenState.className = t ? 'ok' : 'bad';
+}
+
+async function request(url, options = {}) {
+  const token = readToken();
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(url, { ...options, headers });
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  out.textContent = JSON.stringify({ status: res.status, ok: res.ok, data }, null, 2);
+  return { res, data };
+}
+
+get('btn-register').onclick = async () => {
+  const payload = { name: get('reg-name').value, email: get('reg-email').value, password: get('reg-password').value };
+  await request(api.register, { method: 'POST', body: JSON.stringify(payload) });
+};
+
+get('btn-login').onclick = async () => {
+  const payload = { email: get('login-email').value, password: get('login-password').value };
+  const { res, data } = await request(api.login, { method: 'POST', body: JSON.stringify(payload) });
+  if (res.ok && data?.token) {
+    saveToken(data.token);
+    renderToken();
+  }
+};
+
+get('btn-logout').onclick = () => {
+  clearToken();
+  renderToken();
+  out.textContent = 'Token eliminado.';
+};
+
+get('btn-create').onclick = async () => {
+  const payload = { title: get('task-title').value, description: get('task-desc').value, status: Number(get('task-status').value) };
+  await request(api.tasks, { method: 'POST', body: JSON.stringify(payload) });
+};
+
+get('btn-list').onclick = async () => { await request(api.tasks); };
+get('btn-get').onclick = async () => { const id = get('task-id').value; if (!id) return; await request(`${api.tasks}/${id}`); };
+get('btn-delete').onclick = async () => { const id = get('task-id').value; if (!id) return; await request(`${api.tasks}/${id}`, { method: 'DELETE' }); };
+get('btn-clear').onclick = () => { out.textContent = 'Salida limpiada.'; };
+
+renderToken();
+</script>
+</body>
+</html>
