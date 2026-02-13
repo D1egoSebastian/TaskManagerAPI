@@ -1,0 +1,174 @@
+# TaskManagerAPI
+
+API REST para gestión de tareas con autenticación JWT en ASP.NET Core + Entity Framework Core + SQL Server.
+
+## ¿Qué hace esta API?
+
+La API permite:
+
+- Registrar usuarios.
+- Iniciar sesión y obtener un token JWT.
+- Crear, listar, consultar y eliminar tareas.
+- Proteger los endpoints de tareas con JWT.
+- Asegurar que cada usuario solo pueda ver y modificar sus propias tareas.
+
+Además, incluye un frontend estático sencillo para probar los endpoints sin Postman.
+
+---
+
+## Stack técnico
+
+- .NET 10 (ASP.NET Core Web API)
+- Entity Framework Core + SQL Server
+- Autenticación JWT (`JwtBearer`)
+- Hash de contraseñas con `BCrypt.Net-Next`
+
+---
+
+## Estructura principal
+
+- `Controllers/AuthController.cs`: registro y login.
+- `Controllers/TasksController.cs`: CRUD de tareas protegido con `[Authorize]`.
+- `Data/AppDbContext.cs`: contexto de EF Core.
+- `Models/*`: entidades (`User`, `TaskItem`) y enum `TaskStatus`.
+- `wwwroot/index.html`: frontend de prueba.
+
+---
+
+## Configuración requerida
+
+En `appsettings.json` debes tener:
+
+```json
+"ConnectionStrings": {
+  "DefaultConnection": "Server=localhost\\SQLEXPRESS;Database=TaskManagerAPI;Trusted_Connection=True;TrustServerCertificate=True"
+},
+"Jwt": {
+  "Key": "CLAVE_SUPER_LARGA_MINIMO_32_CARACTERES",
+  "Issuer": "TaskManagerAPI",
+  "Audience": "TaskManagerAPIUsers",
+  "ExpiresMinutes": 60
+}
+```
+
+> ⚠️ Importante: `Jwt:Key` debe tener al menos 32 caracteres para HS256.
+
+---
+
+## Cómo ejecutar
+
+1. Restaurar paquetes:
+
+```bash
+dotnet restore
+```
+
+2. Aplicar migraciones (si no está creada la BD):
+
+```bash
+dotnet ef database update
+```
+
+3. Ejecutar la API:
+
+```bash
+dotnet run
+```
+
+4. Abrir en navegador:
+
+- Frontend de prueba: `http://localhost:5047/`
+- API base: `http://localhost:5047/api/...`
+
+Puertos definidos en `Properties/launchSettings.json`.
+
+---
+
+## Flujo de uso recomendado
+
+1. **Register**
+   - `POST /api/auth/register`
+   - Body:
+
+```json
+{
+  "name": "Diego",
+  "email": "diego@test.com",
+  "password": "123456"
+}
+```
+
+2. **Login**
+   - `POST /api/auth/login`
+   - Body:
+
+```json
+{
+  "email": "diego@test.com",
+  "password": "123456"
+}
+```
+
+   - Respuesta esperada: token JWT + datos básicos del usuario.
+
+3. **Usar token en tareas**
+   - Header:
+
+```http
+Authorization: Bearer <TOKEN>
+```
+
+4. **Endpoints de tareas**
+   - `GET /api/tasks`
+   - `GET /api/tasks/{id}`
+   - `POST /api/tasks`
+   - `PUT /api/tasks/{id}`
+   - `DELETE /api/tasks/{id}`
+
+---
+
+## Probar desde el frontend incluido
+
+La página en `wwwroot/index.html` te permite:
+
+- Registrar usuario.
+- Loguear y guardar token en `localStorage`.
+- Crear tareas.
+- Listar tareas propias.
+- Buscar tarea por ID.
+- Eliminar tarea por ID.
+- Ver en pantalla el `status` y el JSON de respuesta de cada petición.
+
+---
+
+## Errores comunes
+
+### 1) `No route matches the supplied values` al registrar
+
+Se produce cuando se usa incorrectamente `CreatedAtAction` sin una acción/ruta válida. Ya está corregido devolviendo `Created(...)`.
+
+### 2) `IDX10720 ... key size must be greater than 256 bits`
+
+La clave JWT es demasiado corta. Solución: usar `Jwt:Key` de 32+ caracteres.
+
+### 3) `MSB3021/MSB3027` al hacer `dotnet run` en Windows
+
+Hay un proceso anterior bloqueando el `.exe`.
+
+```powershell
+Stop-Process -Name TaskManagerAPI -Force
+dotnet clean
+dotnet run
+```
+
+---
+
+## Estado actual
+
+Este proyecto es una base sólida de práctica backend para:
+
+- autenticación con JWT,
+- autorización por usuario,
+- y CRUD con EF Core.
+
+Siguiente mejora recomendada: validaciones de DTOs, endpoints async (`SaveChangesAsync`), pruebas automáticas e implementación de update de estado en tareas.
