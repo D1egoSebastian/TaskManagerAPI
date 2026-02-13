@@ -58,7 +58,8 @@ namespace TaskManagerAPI.Controllers
                 return CreatedAtAction(
                         "", new
                         {
-                            x = newUser.Name
+                            x = newUser.Name,
+                            y = newUser.Email,
                         }, newUser
                     );
 
@@ -118,10 +119,11 @@ namespace TaskManagerAPI.Controllers
                         signingCredentials: credentials
                     );
 
+                var tokenString = new JwtSecurityTokenHandler().WriteToken(Token);
 
                 return Ok(new
                 {
-                    token = Token,
+                    token = tokenString,
                     user = new
                     {
                         id = user.Id,
