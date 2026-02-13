@@ -55,13 +55,12 @@ namespace TaskManagerAPI.Controllers
                 _context.Users.Add(newUser);
                 _context.SaveChanges();
 
-                return CreatedAtAction(
-                        "", new
-                        {
-                            x = newUser.Name,
-                            y = newUser.Email,
-                        }, newUser
-                    );
+                return Created(string.Empty, new
+                {
+                    id = newUser.Id,
+                    name = newUser.Name,
+                    email = newUser.Email
+                });
 
             }
             catch (Exception ex)
