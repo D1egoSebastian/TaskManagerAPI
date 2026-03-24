@@ -1,14 +1,15 @@
-﻿using BCrypt.Net;
-using Microsoft.AspNetCore.Http;
+using BCrypt.Net;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.IdentityModel.Tokens;
 using TaskManagerAPI.Data;
 using TaskManagerAPI.DTOs;
 using TaskManagerAPI.Models;
-using System.IdentityModel.Tokens.Jwt;
-using System.Text;
-using Microsoft.IdentityModel.Tokens;
-
 
 namespace TaskManagerAPI.Controllers
 {
@@ -16,129 +17,173 @@ namespace TaskManagerAPI.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
-        /*
-        POST /api/auth/register
-        POST /api/auth/login
-        */
-
         private readonly AppDbContext _context;
         private readonly IConfiguration _configuration;
+
         public AuthController(AppDbContext context, IConfiguration configuration)
         {
             _context = context;
             _configuration = configuration;
-
         }
 
         [HttpPost("register")]
-
-        public IActionResult RegisterAsync(RegisterDto dto)
+        public async Task<IActionResult> Register([FromBody] RegisterDto dto)
         {
-            try
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var emailExists = await _context.Users.AnyAsync(x => x.Email == dto.Email);
+            if (emailExists)
+                return Conflict(new { message = "This email already exists" });
+
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+            var newUser = new User
             {
-                var emailExist = _context.Users.Any( x => x.Email == dto.Email);
+                Email = dto.Email,
+                Name = dto.Name,
+                Password = passwordHash
+            };
 
-                if (emailExist)
-                {
-                    return Conflict("This email already exist");
-                }
+            _context.Users.Add(newUser);
+            await _context.SaveChangesAsync();
 
-                var passwordhash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
-                var newUser = new User
-                {
-                    Email = dto.Email,
-                    Name = dto.Name,
-                    Password = passwordhash
-
-                };
-
-                _context.Users.Add(newUser);
-                _context.SaveChanges();
-
-                return Created(string.Empty, new
-                {
-                    id = newUser.Id,
-                    name = newUser.Name,
-                    email = newUser.Email
-                });
-
-            }
-            catch (Exception ex)
+            return Created(string.Empty, new
             {
-                return BadRequest(ex.Message);
-            }
-
-
-            
+                id = newUser.Id,
+                name = newUser.Name,
+                email = newUser.Email
+            });
         }
 
         [HttpPost("login")]
-        public IActionResult LoginAsync(LoginDto dto)
+        public async Task<IActionResult> Login([FromBody] LoginDto dto)
         {
-            try
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var user = await _context.Users.FirstOrDefaultAsync(x => x.Email == dto.Email);
+            if (user == null)
+                return Unauthorized(new { message = "Invalid credentials" });
+
+            if (!BCrypt.Net.BCrypt.Verify(dto.Password, user.Password))
+                return Unauthorized(new { message = "Invalid credentials" });
+
+            var token = GenerateJwtToken(user);
+            var refreshToken = await GenerateAndSaveRefreshTokenAsync(user.Id);
+
+            return Ok(new
             {
-
-                if(dto.Email == null || dto.Password == null)
+                token,
+                refreshToken = refreshToken.Token,
+                user = new
                 {
-                    return BadRequest();
+                    id = user.Id,
+                    name = user.Name,
+                    email = user.Email
                 }
+            });
+        }
 
-                var user = _context.Users.FirstOrDefault( x => x.Email == dto.Email);
-                if (user == null)
-                {
-                    return Unauthorized();
-                }
+        [HttpPost("refresh-token")]
+        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenDto dto)
+        {
+            var refreshToken = await _context.RefreshTokens
+                .Include(r => r.User)
+                .FirstOrDefaultAsync(r => r.Token == dto.Token);
 
-                if(!BCrypt.Net.BCrypt.Verify(dto.Password, user.Password))
-                {
-                    return Unauthorized();
-                }
+            if (refreshToken == null)
+                return Unauthorized(new { message = "Invalid refresh token" });
 
-                var claims = new[]
-                {
-                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                    new Claim(ClaimTypes.Email, user.Email),
-                    new Claim(ClaimTypes.Name, user.Name)
-                };
+            if (refreshToken.IsRevoked)
+                return Unauthorized(new { message = "Refresh token has been revoked" });
 
-                //inyectar IConfiguration 
-                var key = _configuration["Jwt:Key"];
-                var issuer = _configuration["Jwt:Issuer"];
-                var audience = _configuration["Jwt:Audience"];
-                var expiresMinutes = int.Parse(_configuration["Jwt:ExpiresMinutes"] ?? "60");
+            if (refreshToken.Expires < DateTime.UtcNow)
+                return Unauthorized(new { message = "Refresh token has expired" });
 
-                var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key!));
-                var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+            refreshToken.IsRevoked = true;
 
-                var Token = new JwtSecurityToken(
-                        issuer: issuer,
-                        audience: audience,
-                        claims: claims,
-                        expires: DateTime.UtcNow.AddMinutes(expiresMinutes),
-                        signingCredentials: credentials
-                    );
+            var newToken = GenerateJwtToken(refreshToken.User);
+            var newRefreshToken = await GenerateAndSaveRefreshTokenAsync(refreshToken.UserId);
 
-                var tokenString = new JwtSecurityTokenHandler().WriteToken(Token);
+            await _context.SaveChangesAsync();
 
-                return Ok(new
-                {
-                    token = tokenString,
-                    user = new
-                    {
-                        id = user.Id,
-                        name = user.Name,
-                        email = user.Email,
-                    }
-                }
-
-                 );
-
-                
-
-            }catch (Exception ex)
+            return Ok(new
             {
-                return BadRequest($"Error {ex.Message}");
+                token = newToken,
+                refreshToken = newRefreshToken.Token,
+                user = new
+                {
+                    id = refreshToken.User.Id,
+                    name = refreshToken.User.Name,
+                    email = refreshToken.User.Email
+                }
+            });
+        }
+
+        [Authorize]
+        [HttpPost("logout")]
+        public async Task<IActionResult> Logout([FromBody] RefreshTokenDto dto)
+        {
+            var refreshToken = await _context.RefreshTokens
+                .FirstOrDefaultAsync(r => r.Token == dto.Token);
+
+            if (refreshToken != null)
+            {
+                refreshToken.IsRevoked = true;
+                await _context.SaveChangesAsync();
             }
+
+            return Ok(new { message = "Logged out successfully" });
+        }
+
+        private string GenerateJwtToken(User user)
+        {
+            var claims = new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim(ClaimTypes.Name, user.Name)
+            };
+
+            var key = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
+            var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            var expiresMinutes = int.Parse(_configuration["Jwt:ExpiresMinutes"] ?? "60");
+
+            var token = new JwtSecurityToken(
+                issuer: _configuration["Jwt:Issuer"],
+                audience: _configuration["Jwt:Audience"],
+                claims: claims,
+                expires: DateTime.UtcNow.AddMinutes(expiresMinutes),
+                signingCredentials: credentials
+            );
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        private async Task<RefreshToken> GenerateAndSaveRefreshTokenAsync(int userId)
+        {
+            var refreshToken = new RefreshToken
+            {
+                Token = GenerateRefreshToken(),
+                Expires = DateTime.UtcNow.AddDays(7),
+                CreatedAt = DateTime.UtcNow,
+                UserId = userId
+            };
+
+            _context.RefreshTokens.Add(refreshToken);
+            await _context.SaveChangesAsync();
+
+            return refreshToken;
+        }
+
+        private static string GenerateRefreshToken()
+        {
+            var randomNumber = new byte[64];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomNumber);
+            return Convert.ToBase64String(randomNumber);
         }
     }
 }

@@ -1,37 +1,37 @@
 # TaskManagerAPI
 
-API REST para gestión de tareas con autenticación JWT en ASP.NET Core + Entity Framework Core + SQL Server.
+API REST para gestión de tareas con autenticación JWT en ASP.NET Core + Entity Framework Core + SQL Server, junto con un frontend en Next.js.
 
 ## ¿Qué hace esta API?
 
 La API permite:
 
 - Registrar usuarios.
-- Iniciar sesión y obtener un token JWT.
-- Crear, listar, consultar y eliminar tareas.
+- Iniciar sesión y obtener un token JWT + refresh token.
+- Crear, listar, consultar, actualizar y eliminar tareas.
 - Proteger los endpoints de tareas con JWT.
+- Actualizar el estado de las tareas.
 - Asegurar que cada usuario solo pueda ver y modificar sus propias tareas.
-
-Además, incluye un frontend estático sencillo para probar los endpoints sin Postman.
-
----
 
 ## Stack técnico
 
-- .NET 10 (ASP.NET Core Web API)
-- Entity Framework Core + SQL Server
-- Autenticación JWT (`JwtBearer`)
-- Hash de contraseñas con `BCrypt.Net-Next`
-
----
+- **Backend**: .NET 10 (ASP.NET Core Web API)
+- **Base de datos**: Entity Framework Core + SQL Server
+- **Autenticación**: JWT (`JwtBearer`) + Refresh Tokens
+- **Hash de contraseñas**: `BCrypt.Net-Next`
+- **Frontend**: Next.js 15 + TypeScript + Tailwind CSS
+- **Middleware**: Manejo de excepciones personalizado
+- **Rate Limiting**: Limitación de solicitudes integrada
 
 ## Estructura principal
 
-- `Controllers/AuthController.cs`: registro y login.
+- `Controllers/AuthController.cs`: registro, login, logout y refresh tokens.
 - `Controllers/TasksController.cs`: CRUD de tareas protegido con `[Authorize]`.
 - `Data/AppDbContext.cs`: contexto de EF Core.
-- `Models/*`: entidades (`User`, `TaskItem`) y enum `TaskStatus`.
-- `wwwroot/index.html`: frontend de prueba.
+- `Models/*`: entidades (`User`, `TaskItem`, `RefreshToken`) y enum `TaskStatus`.
+- `DTOs/*`: objetos de transferencia de datos.
+- `Middleware/ExceptionHandlingMiddleware.cs`: manejo centralizado de errores.
+- `taskmanager-ui/`: frontend Next.js con autenticación y dashboard de tareas.
 
 ---
 
