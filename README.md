@@ -141,34 +141,4 @@ La página en `wwwroot/index.html` te permite:
 
 ---
 
-## Errores comunes
 
-### 1) `No route matches the supplied values` al registrar
-
-Se produce cuando se usa incorrectamente `CreatedAtAction` sin una acción/ruta válida. Ya está corregido devolviendo `Created(...)`.
-
-### 2) `IDX10720 ... key size must be greater than 256 bits`
-
-La clave JWT es demasiado corta. Solución: usar `Jwt:Key` de 32+ caracteres.
-
-### 3) `MSB3021/MSB3027` al hacer `dotnet run` en Windows
-
-Hay un proceso anterior bloqueando el `.exe`.
-
-```powershell
-Stop-Process -Name TaskManagerAPI -Force
-dotnet clean
-dotnet run
-```
-
----
-
-## Estado actual
-
-Este proyecto es una base sólida de práctica backend para:
-
-- autenticación con JWT,
-- autorización por usuario,
-- y CRUD con EF Core.
-
-Siguiente mejora recomendada: validaciones de DTOs, endpoints async (`SaveChangesAsync`), pruebas automáticas e implementación de update de estado en tareas.
